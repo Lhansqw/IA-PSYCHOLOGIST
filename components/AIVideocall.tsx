@@ -74,33 +74,50 @@ export default function AIVideocall() {
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
     } else {
-      if (!stream) return;
-      audioChunksRef.current = [];
+      try {
+        audioChunksRef.current = [];
 
-      // Detectar el formato soportado por el navegador (Chrome, Firefox, Safari)
-      const mimeType = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/ogg;codecs=opus",
-        "audio/mp4",
-      ].find((type) => MediaRecorder.isTypeSupported(type));
+        // Pedir un stream de SOLO AUDIO separado al navegador
+        // Esto evita el error NotSupportedError con el stream de video+audio
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100,
+          },
+          video: false,
+        });
 
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
+        // Detectar el formato soportado por el navegador
+        const mimeType = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/ogg;codecs=opus",
+          "audio/mp4",
+        ].find((type) => MediaRecorder.isTypeSupported(type));
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
+        const recorder = mimeType
+          ? new MediaRecorder(audioStream, { mimeType })
+          : new MediaRecorder(audioStream);
 
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType ?? "audio/webm" });
-        await sendAudioToBackend(audioBlob);
-      };
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
 
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
+        recorder.onstop = async () => {
+          // Detener el stream de audio temporal
+          audioStream.getTracks().forEach((t) => t.stop());
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType ?? "audio/webm" });
+          await sendAudioToBackend(audioBlob);
+        };
+
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Error al acceder al micrófono:", err);
+        alert("No se pudo acceder al micrófono. Verifica los permisos del navegador.");
+      }
     }
   };
 
