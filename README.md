@@ -1,18 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Aria – Psicóloga IA (frontend)
 
 ## Getting Started
 
-First, run the development server:
+## Estructura principal
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- `app/layout.tsx`: layout raíz, fuente Geist y metadatos de la app.
+- `app/page.tsx`: renderiza el componente principal `AIVideocall`.
+- `components/AIVideocall.tsx`:
+  - Maneja los estados de sesión: `idle`, `active`, `ended`.
+  - Pide permisos de **cámara** y **micrófono**.
+  - Controla:
+    - Mute (`isMuted`)
+    - Cámara encendida/apagada (`isCamOff`)
+    - Grabación de audio para enviar al backend (`isRecording`)
+    - Estado de la IA: `idle | thinking | speaking`
+  - Administra el **timer** de la sesión y el ID de sesión (`sessionId`) que le da el backend.
+  - Llama a:
+    - `TopBar` (barra superior con estado de sesión y tiempo).
+    - `UserVideo` (PIP con tu vídeo o un placeholder si la cámara está apagada).
+    - `Transcript` (chat de usuario ⇄ Aria).
+    - `ControlBar` (botones de micrófono, cámara, grabar, transcripción y terminar sesión).
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 

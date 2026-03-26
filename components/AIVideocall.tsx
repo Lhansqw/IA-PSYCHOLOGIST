@@ -25,6 +25,7 @@ export default function AIVideocall() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   // ── Session timer ──
   useEffect(() => {
@@ -127,41 +128,60 @@ export default function AIVideocall() {
     setAiState("thinking");
 
     try {
-      // ┌─────────────────────────────────────────────────────────┐
-      // │  CONECTAR AL BACKEND AQUÍ cuando tengas Spring Boot:    │
-      // │                                                         │
-      // │  const formData = new FormData();                       │
-      // │  formData.append("audio", audioBlob, "audio.webm");     │
-      // │  formData.append("sessionId", "session_123");           │
-      // │                                                         │
-      // │  const res = await fetch(                               │
-      // │    "http://localhost:8080/chat/audio",                   │
-      // │    { method: "POST", body: formData }                   │
-      // │  );                                                     │
-      // │  const { transcription, aiResponse, audioUrl } =        │
-      // │    await res.json();                                     │
-      // │                                                         │
-      // │  // Reproducir audio de la IA:                          │
-      // │  const audio = new Audio(audioUrl);                     │
-      // │  audio.play();                                          │
-      // └─────────────────────────────────────────────────────────┘
+      // 1. Crear sesión si no existe
+      if (!sessionIdRef.current) {
+        const sessionRes = await fetch("http://localhost:8080/api/session/start", {
+          method: "POST",
+        });
+        const sessionData = await sessionRes.json();
+        sessionIdRef.current = sessionData.sessionId;
+      }
 
-      // DEMO: simula respuesta del backend
-      await new Promise((r) => setTimeout(r, 2000));
+      // 2. Enviar audio al backend
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "recording.webm");
+      formData.append("sessionId", sessionIdRef.current!);
 
-      const demoUserText = "Me he sentido un poco ansioso esta semana.";
-      const demoAiText =
-        "Entiendo cómo te sientes. La ansiedad puede ser agotadora. ¿Puedes contarme un poco más sobre qué situaciones la desencadenan?";
+      const res = await fetch("http://localhost:8080/api/chat/audio", {
+        method: "POST",
+        body: formData,
+      });
 
-      setMessages((prev) => [...prev, { sender: "user", text: demoUserText }]);
-      setAiState("speaking");
-      setTimeout(() => {
-        setMessages((prev) => [...prev, { sender: "ai", text: demoAiText }]);
-        setTimeout(() => setAiState("idle"), 5000);
-      }, 300);
+      if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
+
+      const data = await res.json();
+      const { transcription, aiResponse, audioBase64, hasAudio } = data;
+
+      // 3. Mostrar transcripción del usuario
+      setMessages((prev) => [...prev, { sender: "user", text: transcription }]);
+
+      // 4. Reproducir audio de la IA
+      if (hasAudio && audioBase64) {
+        const audioBytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+        const aiAudioBlob = new Blob([audioBytes], { type: "audio/mp3" });
+        const audioUrl = URL.createObjectURL(aiAudioBlob);
+        const audio = new Audio(audioUrl);
+        setAiState("speaking");
+        audio.play();
+        audio.onended = () => {
+          setAiState("idle");
+          URL.revokeObjectURL(audioUrl);
+        };
+      } else {
+        setAiState("speaking");
+        setTimeout(() => setAiState("idle"), 4000);
+      }
+
+      // 5. Mostrar respuesta en el chat
+      setMessages((prev) => [...prev, { sender: "ai", text: aiResponse }]);
+
     } catch (err) {
-      console.error("Error enviando audio:", err);
+      console.error("Error al procesar audio:", err);
       setAiState("idle");
+      setMessages((prev) => [...prev, {
+        sender: "ai",
+        text: "Hubo un problema de conexión. ¿Puedes repetir lo que dijiste?",
+      }]);
     } finally {
       setIsProcessing(false);
     }
